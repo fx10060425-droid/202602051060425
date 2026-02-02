@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 復興區公所尾牙數位平台</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        :root {
+            --primary: #2c3e50; --accent: #3498db; --red: #e74c3c; --bg: #f8fafc; --white: #ffffff; --border: #e2e8f0; --tit-blue: #e3f2fd;
+        }
+        body { 
+            font-family: -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif; 
+            background-color: var(--bg); margin: 0; padding: 0; color: #333; 
+        }
+        
+        /* 頂部導覽列 */
+        .nav-main { background: var(--white); position: sticky; top: 0; z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .nav-header { text-align: center; padding: 15px 10px; border-bottom: 1px solid var(--border); }
+        .nav-header h1 { margin: 0; font-size: 1.1rem; color: var(--primary); letter-spacing: 1px; }
+        .nav-tabs { display: flex; justify-content: space-around; }
+        .tab-btn { padding: 12px 5px; font-weight: 500; cursor: pointer; color: #7f8c8d; border-bottom: 3px solid transparent; flex: 1; text-align: center; font-size: 0.95rem; transition: 0.3s; }
+        .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: bold; }
+
+        /* 內容容器 */
+        .container { max-width: 900px; margin: auto; padding: 20px; min-height: 80vh; }
+        .page { display: none; animation: fadeIn 0.4s ease; }
+        .page.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* 手冊子選單 */
+        .m-nav { display: flex; gap: 8px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 5px; }
+        .m-btn { background: #eee; padding: 8px 18px; border-radius: 20px; font-size: 0.85rem; cursor: pointer; border: none; white-space: nowrap; color: #666; }
+        .m-btn.active { background: var(--primary); color: white; }
+        .m-section { display: none; }
+        .m-section.active { display: block; }
+
+        /* 卡片樣式 */
+        .card { background: white; border-radius: 12px; border: 1px solid var(--border); padding: 15px; margin-bottom: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
+        .program-card { display: flex; border-left: 5px solid var(--accent); overflow: hidden; padding: 0; }
+        .time { background: #ebf5fb; color: var(--accent); padding: 15px; min-width: 60px; font-weight: bold; text-align: center; display: flex; align-items: center; justify-content: center; }
+        .event { padding: 15px; flex: 1; }
+
+        /* 中獎卡片 */
+        .winner-card { 
+            display: inline-block; background: white; padding: 10px 22px; font-size: 1.3rem; font-weight: bold; 
+            color: var(--primary); border: 2px solid var(--tit-blue); border-radius: 50px; margin: 6px; 
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05); animation: pop 0.5s ease;
+        }
+        @keyframes pop { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
+
+        /* 內嵌容器 (禮物清單) */
+        .iframe-container { 
+            width: 100%; height: 65vh; border-radius: 12px; overflow: hidden; 
+            border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+            -webkit-overflow-scrolling: touch; background: white;
+        }
+
+        /* 管理後台 */
+        .admin-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+        @media (min-width: 768px) { .admin-grid { grid-template-columns: 320px 1fr; } }
+        .sidebar { background: white; padding: 25px; border-radius: 15px; border: 1px solid var(--border); height: fit-content; }
+        .btn { padding: 12px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn-blue { background: var(--accent); color: white; }
+        .btn-outline { background: white; border: 1px solid var(--border); color: #7f8c8d; }
+        input { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; margin-bottom: 12px; }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; }
+        .modal-content { background: white; width: 90%; max-width: 800px; padding: 35px; border-radius: 15px; position: relative; max-height: 90vh; overflow-y: auto; }
+        
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white !important; }
+            .container, .modal-content { box-shadow: none !important; border: none !important; width: 100% !important; padding: 0 !important; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid black !important; padding: 10px; text-align: center; }
+        }
+    </style>
+</head>
+<body>
+
+<audio id="soundDrum" src="https://assets.mixkit.co/active_storage/sfx/2044/2044-preview.mp3"></audio>
+<audio id="soundTada" src="https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3"></audio>
+
+<nav class="nav-main no-print">
+    <div class="nav-header"><h1>復興區公所 2026 尾牙晚宴</h1></div>
+    <div class="nav-tabs">
+        <div class="tab-btn active" onclick="switchPage('manual', this)">📖 數位手冊</div>
+        <div class="tab-btn" onclick="switchPage('board', this)">🎊 中獎看板</div>
+        <div class="tab-btn" onclick="checkAdmin(this)">⚙️ 抽獎管理</div>
+    </div>
+</nav>
+
+<div class="container">
+    <div id="pageManual" class="page active">
+        <div class="m-nav no-print">
+            <button class="m-btn active" onclick="showM('program', this)">節目流程</button>
+            <button class="m-btn" onclick="showM('hr', this)">業務宣導</button>
+            <button class="m-btn" onclick="showM('gift', this)">禮物清單</button>
+        </div>
+
+        <div id="m-program" class="m-section active">
+            <div class="card program-card"><div class="time">17:30-18:00</div><div class="event"><b>賓客入席</b> | 迎賓樂曲</div></div>
+	    <div class="card program-card"><div class="time">18:00-18:10</div><div class="event"><b>暖場表演</b> | 秘書口簧琴表演</div></div>
+            <div class="card program-card"><div class="time">18:10-18:30</div><div class="event"><b>區長致詞/介紹貴賓</b> | 第一階段人人有獎開始，請密切注意開獎畫面</div></div>
+            <div class="card program-card"><div class="time">18:30-19:30</div><div class="event"><b>復興歌王歌后</b> | 把手放在空中甩~</div></div>
+            <div class="card program-card"><div class="time">19:30-20:30</div><div class="event"><b>大獎時刻</b> | 現場加碼及小確幸整碗端走</div></div>
+	    <div class="card program-card"><div class="time">21:00-</div><div class="event"><b>回家</b> | 晚安</div></div>
+        </div>
+
+        <div id="m-hr" class="m-section">
+            <h3 style="color: var(--red);">⚖️ 廉政宣導/行政中立</h3><p>請同仁恪守機關倫理，謝絕不當饋贈，落實「清廉行政」。</p>
+            <h3 style="color: var(--red);">🛡️ 性騷擾防治</h3><p>營造友善職場，席間請保持適當社交距離與禮儀。</p>
+            <h3 style="color: var(--red);">🍷 安全駕駛</h3><p>「酒後不開車，開車不喝酒」，請同仁務必平安返家。</p>
+            <h3 style="color: var(--red);">🍷 員工協助方案宣導</h3><p>「請別忘記還有我們陪您渡過低谷，每一個人都是獨一獨二的存在」。</p>
+        </div>
+
+        <div id="m-gift" class="m-section">
+            <h3 style="text-align: center; color: var(--primary);">🎁 2026 尾牙精選禮物清單</h3>
+            <div class="iframe-container">
+                <iframe 
+                    src="https://fx10060425-droid.github.io/20260205FU-XING/" 
+                    style="width: 100%; height: 100%; border: none;" 
+                    scrolling="yes"
+                    title="禮物清單">
+                </iframe>
+            </div>
+            <p style="text-align: center; font-size: 0.8rem; color: #999; margin-top: 10px;">( 如無法顯示，請確認 GitHub Repository 已設為 Public )</p>
+        </div>
+    </div>
+
+    <div id="pageBoard" class="page">
+        <div style="text-align: center; margin-bottom: 25px;">
+            <input type="text" id="searchName" placeholder="輸入姓名查詢中獎狀態" style="max-width: 300px; display: inline-block;">
+            <button class="btn btn-blue" onclick="searchWinner()">查詢</button>
+            <div id="searchResult" style="margin-top: 10px; font-weight: bold; color: var(--accent);"></div>
+        </div>
+        <div id="boardContent" style="text-align: center; border-top: 1px solid var(--border); padding-top: 25px;">
+            <p style="color: #ccc;">等待開獎中...</p>
+        </div>
+    </div>
+
+    <div id="pageAdmin" class="page">
+        <div class="admin-grid">
+            <div class="sidebar">
+                <h3>抽獎控制</h3>
+                <input type="file" id="excelInput">
+                <p style="font-size: 0.8rem;">待抽：<span id="remCount" style="font-weight:bold; color:var(--accent);">0</span> 人</p>
+                <input type="text" id="pName" placeholder="獎項名稱">
+                <input type="number" id="pCount" placeholder="抽幾人" value="10">
+                <button class="btn btn-outline" style="width:100%; margin-bottom: 15px;" onclick="addPrize()">+ 加入清單</button>
+                <div id="adminPrizeList" style="max-height: 150px; overflow-y: auto; border: 1px solid var(--border); margin-bottom: 15px;"></div>
+                <button class="btn btn-blue" style="width:100%;" onclick="runDraw()">🎲 開始抽獎</button>
+                <button class="btn btn-outline" style="width:100%; margin-top: 10px;" onclick="generateReport()">產製 PDF 報表</button>
+                <button class="btn" style="color: #ccc; font-size: 0.7rem; width:100%;" onclick="clearCloud()">清空雲端</button>
+            </div>
+            <div id="adminResults" style="background: white; border-radius: 12px; border: 1px solid var(--border); padding: 25px; text-align: center; min-height: 400px;">
+                <div id="loadingAnim" style="display:none; padding: 100px; color: var(--accent);">🥁 抽獎中...</div>
+                <div id="drawStage">抽獎結果預覽區</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="modal" class="modal" onclick="if(event.target===this) closeModal()">
+    <div class="modal-content">
+        <button class="no-print" onclick="closeModal()" style="position: absolute; right: 20px; top: 20px; border: none; background: none; font-size: 1.5rem;">&times;</button>
+        <div id="modalBody"></div>
+    </div>
+</div>
+
+<script>
+    // --- Firebase 設定 (⚠️ 請填入您的網址) ---
+    const firebaseConfig = { databaseURL: "https://fuxing-lucky-draw-default-rtdb.asia-southeast1.firebasedatabase.app/" };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database().ref('fuxing_integrated_2026');
+
+    let participants = [];
+    let prizeQueue = [];
+    let winnersHistory = [];
+
+    // --- 導覽邏輯 ---
+    function switchPage(p, btn) {
+        document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById('page' + p.charAt(0).toUpperCase() + p.slice(1)).classList.add('active');
+        btn.classList.add('active');
+    }
+
+    function showM(id, btn) {
+        document.querySelectorAll('.m-section').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.m-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById('m-' + id).classList.add('active');
+        btn.classList.add('active');
+    }
+
+    function checkAdmin(btn) {
+        const pw = prompt("管理密碼：");
+        if(pw === "2026") switchPage('admin', btn);
+    }
+
+    // --- 抽獎邏輯 ---
+    document.getElementById('excelInput').addEventListener('change', (e) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const wb = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
+            participants = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1}).map(r => r[0]).filter(n => n);
+            document.getElementById('remCount').innerText = participants.length;
+            alert("名單載入成功！");
+        };
+        reader.readAsArrayBuffer(e.target.files[0]);
+    });
+
+    function addPrize() {
+        const name = document.getElementById('pName').value;
+        const count = parseInt(document.getElementById('pCount').value);
+        if(name && count > 0) {
+            prizeQueue.push({ name, count, id: Date.now() });
+            updateAdminUI();
+            document.getElementById('pName').value = "";
+        }
+    }
+
+    function updateAdminUI() {
+        document.getElementById('adminPrizeList').innerHTML = prizeQueue.map((p, i) => `
+            <div style="display:flex; padding:8px; border-bottom:1px solid #eee; align-items:center; font-size:0.85rem;">
+                <input type="checkbox" class="p-cb" value="${i}" checked style="width:auto; margin-right:8px;">
+                <span style="flex:1;">${p.name} (${p.count}名)</span>
+                <span onclick="prizeQueue.splice(${i},1);updateAdminUI()" style="cursor:pointer; color:#ccc;">&times;</span>
+            </div>
+        `).join('');
+    }
+
+    function runDraw() {
+        const checked = document.querySelectorAll('.p-cb:checked');
+        if(checked.length === 0 || participants.length === 0) return alert("請確認抽獎項或名單");
+
+        document.getElementById('loadingAnim').style.display = 'block';
+        document.getElementById('drawStage').style.display = 'none';
+        document.getElementById('soundDrum').play();
+
+        setTimeout(() => {
+            document.getElementById('loadingAnim').style.display = 'none';
+            document.getElementById('drawStage').style.display = 'block';
+            document.getElementById('soundTada').play();
+
+            checked.forEach(cb => {
+                const prize = prizeQueue[cb.value];
+                let winners = [];
+                for(let i=0; i<prize.count; i++) {
+                    if(participants.length > 0) {
+                        const idx = Math.floor(Math.random() * participants.length);
+                        winners.push(participants.splice(idx, 1)[0]);
+                    }
+                }
+                db.push({ prize: prize.name, winners, time: new Date().toLocaleTimeString() });
+            });
+            const selIdx = Array.from(checked).map(c => parseInt(c.value)).sort((a,b)=>b-a);
+            selIdx.forEach(i => prizeQueue.splice(i, 1));
+            updateAdminUI();
+            document.getElementById('remCount').innerText = participants.length;
+        }, 2000);
+    }
+
+    db.on('value', (snapshot) => {
+        const data = snapshot.val();
+        winnersHistory = [];
+        const board = document.getElementById('boardContent');
+        const stage = document.getElementById('drawStage');
+        if(!data) { board.innerHTML = "<p>等待開獎...</p>"; return; }
+        let html = "";
+        Object.values(data).reverse().forEach(record => {
+            html += `<h3 style="color:var(--accent); border-bottom:1px solid #eee; padding-bottom:10px;">🎁 ${record.prize}</h3>`;
+            record.winners.forEach(w => {
+                html += `<div class="winner-card">${w}</div>`;
+                winnersHistory.push({ name: w, prize: record.prize });
+            });
+        });
+        board.innerHTML = html;
+        if(stage) stage.innerHTML = html;
+    });
+
+    function searchWinner() {
+        const name = document.getElementById('searchName').value.trim();
+        const found = winnersHistory.filter(d => d.name === name);
+        document.getElementById('searchResult').innerText = name ? (found.length > 0 ? `🎊 獲得：${found.map(f=>f.prize).join('、')}` : "加油！好運在後面") : "";
+    }
+
+    function showModal(content) { document.getElementById('modalBody').innerHTML = content; document.getElementById('modal').style.display = 'flex'; }
+    function closeModal() { document.getElementById('modal').style.display = 'none'; }
+
+    function generateReport() {
+        let html = `<div class="no-print" style="text-align:center;"><button class="btn btn-blue" onclick="window.print()">儲存為 PDF</button><hr></div>`;
+        html += `<h2 style="text-align:center;">復興區公所 2026 尾牙核對表</h2>`;
+        const grouped = winnersHistory.reduce((acc, curr) => { (acc[curr.prize] = acc[curr.prize] || []).push(curr.name); return acc; }, {});
+        for (let prize in grouped) {
+            html += `<h3>獎項：${prize}</h3><table border="1" width="100%"><tr><th>序號</th><th>中獎人</th><th width="200">簽收</th></tr>`;
+            grouped[prize].forEach((n, i) => html += `<tr><td>${i+1}</td><td style="font-weight:bold;">${n}</td><td height="40"></td></tr>`);
+            html += `</table>`;
+        }
+        showModal(html);
+    }
+    function clearCloud() { if(confirm("清空？")) db.remove(); }
+</script>
+</body>
+</html>
